@@ -1,0 +1,47 @@
+{
+    "development": {
+      "is_multiple_db": true,
+      "database": {
+        "user": "sa",
+        "password": "masterkey_2233#",
+        "server": "localhost",
+        "database": "Appointment System",
+        "port": 2019,
+        "connectionTimeout": 60000,
+        "requestTimeout": 300000,
+        "pool": {
+          "max": 1,
+          "min": 1,
+          "idleTimeoutMillis": 60000
+        },
+        "options": {
+          "appName": "pph-node",
+          "enableArithAbort": true,
+          "encrypt": false
+        }
+      }
+    },
+    "production": {
+      "is_multiple_db": true,
+      "database": {
+        "user": "sa",
+        "password": "masterkey",
+        "server": "localhost",
+        "database": "pph",
+        "port": 2014,
+        "connectionTimeout": 60000,
+        "requestTimeout": 300000,
+        "pool": {
+          "max": 100,
+          "min": 0,
+          "idleTimeoutMillis": 60000
+        },
+        "options": {
+          "appName": "pph-node",
+          "enableArithAbort": true,
+          "encrypt": false
+        }
+      }
+    }
+  }
+  
