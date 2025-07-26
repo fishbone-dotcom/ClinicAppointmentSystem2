@@ -1,4 +1,4 @@
-const PostgresAdapter = require('../helpers/msql_adapter');
+const PostgresAdapter = require('../helpers/pg_adapter');
 class Appointment extends PostgresAdapter {
   constructor(db) {
     super(db);
