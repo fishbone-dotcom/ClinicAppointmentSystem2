@@ -6,7 +6,7 @@ const db = require('./helpers/database')
 const cookieParser = require('cookie-parser');
 require('dotenv').config(); // For loading .env variables
 
-// const appointmentRoutes = require('./routes/appointments');
+const appointmentRoutes = require('./routes/appointments');
 // const patientRoutes = require('./routes/patients');
 // const userRoutes = require('./routes/users');
 const clinicRoutes = require('./routes/clinics');
@@ -39,7 +39,7 @@ const setToDefaultDB = async (req, res, next) => {
 app.use(setToDefaultDB)
 
 // Routes
-// app.use('/api/appointments', appointmentRoutes);
+app.use('/api/appointments', appointmentRoutes);
 // app.use('/api/patients', patientRoutes);
 // app.use('/api/users', userRoutes);
 app.use('/api/clinics', clinicRoutes);
@@ -48,12 +48,6 @@ app.use('/api/clinics', clinicRoutes);
 
 // Root route
 app.get('/', async (req, res) => {
-  const db = res.locals.conn
-  const result = await db.query(
-    `SELECT 1 AS Counts`
-  );
-
-  console.log('result: ', result.rows);
   res.send('Appointment Reminder API is running 🚀');
 });
 

@@ -2,146 +2,157 @@ const express = require('express');
 const router = express.Router();
 const {isBlank} = require('../helpers/common')
 const Appointment = require('../models/appointments')
-const Email = require('../models/emails')
-const sql = require('mssql');
+const Email = require('../models/emails');
 
 router.post('/data_by_id', async (req, res) => {
-  const conn = res.locals.conn
-  let {id} = req.body
+  const { id } = req.body;
 
-  let result = await conn.request()
-    .input('id', sql.Int, id)
-    .query(`SELECT Id, UserId, ClinicId, PatientId, Date, Time, StatusId, Notes
-            FROM tblAppointments
-            WHERE Id = @id`)
+  try {
+    const db = res.locals.conn
+    const result = await db.query(
+      `
+      SELECT id, user_id, clinic_id, patient_id, date, time, status_id, notes
+      FROM tbl_appointments
+      WHERE id = $1
+      `,
+      [id]
+    );
 
-  res.json({data: result.recordset[0]})
-})
+    res.json({ data: result.rows[0] });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error_message: error.message });
+  }
+});
 
 router.post('/details', async (req, res) => {
-  const conn = res.locals.conn
+  const db = res.locals.conn
   let {params} = req.body
   let {ClinicId, PatientId, StatusId} = params
 
-  let result = await conn.request()
-    .input('clinic_id', sql.Int, ClinicId)
-    .input('patient_id', sql.Int, PatientId)
-    .input('status_id', sql.Int, StatusId)
-    .query(`
-            SELECT a.Id, c.Name AS Clinic, ISNULL(u.FormalName, '') AS [Doctor], p.FormalName AS [Patient], s.Name AS [Status], dbo.fnFormatDate('mm/dd/yyyy', a.[Date]) AS [Date], dbo.fnFormatTime(a.Time, '12', 1) AS [Time], a.Notes
-            FROM tblAppointments a
-              INNER JOIN tblClinics c ON c.Id = a.ClinicId
-              LEFT JOIN tblUsers u ON u.Id = a.UserId
-              INNER JOIN tblPatients p ON p.Id = a.PatientId
-              INNER JOIN tblAppointmentStatus s ON s.Id = a.StatusId
-            WHERE (@clinic_id = 0 OR a.ClinicId = @clinic_id)
-              AND (@patient_id = 0 OR a.PatientId = @patient_id)
-              AND (@status_id = 0 OR a.StatusId = @status_id)
-    `)
+  const result = await db.query(
+    `
+    SELECT a.id, c.name AS clinic, COALESCE(u.formal_name, '') AS doctor, p.formal_name AS patient, s.name AS status, TO_CHAR(a.date, 'MM/DD/YYYY') AS date, TO_CHAR(a.time, 'HH12:MI AM') AS time, a.notes
+    FROM tbl_appointments a
+      INNER JOIN tbl_clinics c ON c.id = a.clinic_id
+      LEFT JOIN tbl_users u ON u.id = a.user_id
+      INNER JOIN tbl_patients p ON p.id = a.patient_id
+      INNER JOIN tbl_appointment_status s ON s.id = a.status_id
+    WHERE ($1 = 0 OR a.clinic_id = $1)
+      AND ($2 = 0 OR a.patient_id = $2)
+      AND ($3 = 0 OR a.status_id = $3)
+    `,
+    [ClinicId, PatientId, StatusId]
+  );
 
-  res.json({data: result.recordset})
+  res.json({data: result.rows})
 })
 
 router.post('/save', async (req, res) => {
-  const conn = res.locals.conn
-  let {id, patientId, clinicId, statusId, date, time, reason} = req.body
+  const db = res.locals.conn
+  let id = req.body.id
+  let { patientId, clinicId, statusId, userId, date, time, reason} = req.body.masterFormData
+  console.log('req.body: ', req.body);
 
   let errorMessage
-  const transaction = await conn.transaction()
-  await transaction.begin()
+  await db.query('BEGIN');
   try {
-      let appointment = new Appointment(transaction)
-      let email = new Email(transaction)
-      let data = {
-            PatientId: patientId,
-            ClinicId: clinicId,
-            StatusId: statusId,
-            Date: date,
-            Time: time,
-            Notes: reason
+    let appointment = new Appointment(db)
+    let email = new Email(db)
+    let data = {
+          user_id: userId,
+          patient_id: patientId,
+          clinic_id: clinicId,
+          status_id: statusId,
+          date: date,
+          time: time,
+          notes: reason
+    }
+
+    if(isBlank(id)){
+      const result = await appointment.insert(data);
+      id = result.id;
+      await appointment.checkDuplicate(id, data)
+    }
+    else{
+      await appointment.update(id, data);
+    }
+
+    let appointmentResult = await db.query(
+      `
+        SELECT s.is_send_email, s.name AS status, u.email AS sender_email, p.email AS recipient_email, a.date, a.time
+        FROM tbl_appointments a
+          INNER JOIN tbl_users u ON u.id = a.user_id
+          INNER JOIN tbl_patients p ON p.id = a.patient_id
+          INNER JOIN tbl_appointment_status s ON s.id = a.status_id
+        WHERE a.Id = $1
+      `,
+      [id]
+    )
+
+    if (appointmentResult.rows.length > 0){
+
+      let {is_send_email, status, sender_email, recipient_email, date, time} = appointmentResult.rows[0]
+
+      if(is_send_email){
+        let emailData = {
+          "appointment_id": id,
+          "sender_email": recipient_email,
+          "recipient_email": sender_email,
+          "subject": `Your Appointment is ${status}`,
+          "body": `Dear Patient, your appointment with HealthFirst Medical Center has been ${status} for ${date} at ${time}.`
         }
 
-      if(isBlank(id)){
-        console.log('test')
-        let result = await appointment.insert(data)
-        id = result.Id
-        await appointment.checkDuplicate(id, data)
+        await email.insert(emailData)
       }
-      else{
-        const params = [
-            { name: 'id', type: sql.Int, value: id }
-        ]
+    }
 
-        await appointment.update(params, data, 'Id = @id')
-      }
-
-      let appointmentResult = await transaction.request()
-      .input('id', sql.Int, id)
-      .query(`
-              SELECT s.IsSendEmail, s.Name AS Status, u.Email AS SenderEmail, p.Email AS RecipientEmail, a.[Date], a.[Time]
-              FROM tblAppointments a
-                INNER JOIN tblUsers u ON u.Id = a.UserId
-                INNER JOIN tblPatients p ON p.Id = a.PatientId
-                INNER JOIN tblAppointmentStatus s ON s.Id = a.StatusId
-              WHERE a.Id = @id
-      `)
-
-      if (appointmentResult.recordset.length > 0){
-
-        let {IsSendEmail, Status, SenderEmail, RecipientEmail, Date, Time} = appointmentResult.recordset[0]
-
-        if(IsSendEmail){
-          let emailData = {
-            "AppointmentId": id,
-            "SenderEmail": RecipientEmail,
-            "RecipientEmail": SenderEmail,
-            "Subject": `Your Appointment is ${Status}`,
-            "Body": `Dear Patient, your appointment with HealthFirst Medical Center has been ${Status} for ${Date} at ${Time}.`
-          }
-
-          await email.insert(emailData)
-        }
-      }
-
-      await transaction.commit()
+    await db.query('COMMIT');
   } catch (error) {
-    console.log('error: ', error);
-      errorMessage = error.message
-      await transaction.rollback()
+    errorMessage = error.message
+    await db.query('ROLLBACK');
   }
   finally{
-      res.json({error_message: errorMessage})
+    db.release();
+    res.json({error_message: errorMessage})
   }
 });
 
 router.post('/delete', async (req, res) => {
-    const conn = res.locals.conn
-    let {id} = req.body
-    let errorMessage
-    const transaction = await conn.transaction()
-    await transaction.begin()
-    try {
-        let appointment = new Appointment(transaction)
+  const { id } = req.body;
+  let errorMessage;
+  const db = res.locals.conn
 
-        await appointment.delete(id)
-        await transaction.commit()
-    } catch (error) {
-        errorMessage = error.message
-        await transaction.rollback()
-    }
-    finally{
-        res.json({error_message: errorMessage})
-    }
+  try {
+    await db.query('BEGIN');
+
+    let appointment = new Appointment(db);
+
+    await appointment.delete(id);
+
+    await db.query('COMMIT');
+  } catch (error) {
+    console.error(error);
+    errorMessage = error.message;
+    await db.query('ROLLBACK');
+  } finally {
+    db.release();
+    res.json({ error_message: errorMessage });
+  }
 });
 
 router.get('/get_appointment_look_ups', async (req, res) => {
-  const conn = res.locals.conn
-
-  let appointmentStatus = await conn.request()
-    .query(`SELECT Id AS id, Name  AS value
-            FROM tblAppointmentStatus`)
-
-  res.json({data: appointmentStatus.recordset})
-})
+  try {
+    const db = res.locals.conn
+    const result = await db.query(
+      `SELECT Id AS id, Name  AS value
+            FROM tbl_appointment_status`
+    );
+    res.json({ data: result.rows });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error_message: error.message });
+  }
+});
 
 module.exports = router;
