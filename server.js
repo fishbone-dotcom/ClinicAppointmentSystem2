@@ -11,7 +11,7 @@ const appointmentRoutes = require('./routes/appointments');
 // const userRoutes = require('./routes/users');
 const clinicRoutes = require('./routes/clinics');
 // const loginRoutes = require('./routes/login');
-// const dashboardRoutes = require('./routes/dashboard');
+const dashboardRoutes = require('./routes/dashboard');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -44,7 +44,7 @@ app.use('/api/appointments', appointmentRoutes);
 // app.use('/api/users', userRoutes);
 app.use('/api/clinics', clinicRoutes);
 // app.use('/api/', loginRoutes);
-// app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 // Root route
 app.get('/', async (req, res) => {

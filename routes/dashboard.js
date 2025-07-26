@@ -1,66 +1,89 @@
 const express = require('express');
 const router = express.Router();
-const bcrypt = require('bcrypt');
-const sql = require('mssql');
 
 router.get('/get_appointment_upcoming', async (req, res) => {
-  const conn = res.locals.conn
+  try {
+    const db = res.locals.conn;
+    const result = await db.query(
+      `
+      SELECT
+        a.id,
+        c.name AS clinic,
+        COALESCE(u.formal_name, '') AS doctor,
+        p.formal_name AS patient,
+        s.name AS status,
+        TO_CHAR(a.date, 'MM/DD/YYYY') AS date,
+        TO_CHAR(a.time, 'HH12:MI AM') AS time,
+        a.notes
+      FROM tbl_appointments a
+        INNER JOIN tbl_clinics c ON c.id = a.clinic_id
+        LEFT JOIN tbl_users u ON u.id = a.user_id
+        INNER JOIN tbl_patients p ON p.id = a.patient_id
+        INNER JOIN tbl_appointment_status s ON s.id = a.status_id
+      WHERE (a.date + a.time >= NOW())
+        AND s.id = 2
+      `
+    );
 
-  let appointmentUpcoming = await conn.request()
-    .query(`SELECT a.Id, c.Name AS Clinic, ISNULL(u.FormalName, '') AS [Doctor], p.FormalName AS [Patient], s.Name AS [Status], dbo.fnFormatDate('mm/dd/yyyy', a.[Date]) AS [Date], dbo.fnFormatTime(a.Time, '12', 1) AS [Time], a.Notes
-            FROM tblAppointments a
-              INNER JOIN tblClinics c ON c.Id = a.ClinicId
-              LEFT JOIN tblUsers u ON u.Id = a.UserId
-              INNER JOIN tblPatients p ON p.Id = a.PatientId
-              INNER JOIN tblAppointmentStatus s ON s.Id = a.StatusId
-            WHERE (a.DateTime >= GETDATE())
-			AND s.Id = 2`)
+    res.json({ data: result.rows });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error_message: error.message });
+  }
+});
 
-  res.json({data: appointmentUpcoming.recordset})
-})
-
+// POST: Appointment stats
 router.post('/get_appointment_stats', async (req, res) => {
-  const conn = res.locals.conn
-  let {params} = req.body
+  const { params } = req.body;
+  console.log('params: ', params);
 
-  let appointmentStats= await conn.request()
-    .input('date', sql.Date, params.Date)
-    .query(`SELECT 'Total Appointments' AS label, COUNT(1) AS value, 'FaCalendarDay' AS icon
-            FROM tblAppointments a
-              INNER JOIN tblClinics c ON c.Id = a.ClinicId
-              LEFT JOIN tblUsers u ON u.Id = a.UserId
-              INNER JOIN tblPatients p ON p.Id = a.PatientId
-              INNER JOIN tblAppointmentStatus s ON s.Id = a.StatusId
-            WHERE a.Date = @date
+  try {
+    const db = res.locals.conn;
+    const result = await db.query(
+      `
+      SELECT 'Total Appointments' AS label, COUNT(*) AS value, 'FaCalendarDay' AS icon
+      FROM tbl_appointments a
+        INNER JOIN tbl_clinics c ON c.id = a.clinic_id
+        LEFT JOIN tbl_users u ON u.id = a.user_id
+        INNER JOIN tbl_patients p ON p.id = a.patient_id
+        INNER JOIN tbl_appointment_status s ON s.id = a.status_id
+      WHERE a.date = $1
 
-            UNION ALL
+      UNION ALL
 
-            SELECT 'Upcoming Appointments', COUNT(1), 'FaClock'
-                        FROM tblAppointments a
-                        INNER JOIN tblClinics c ON c.Id = a.ClinicId
-                        LEFT JOIN tblUsers u ON u.Id = a.UserId
-                        INNER JOIN tblPatients p ON p.Id = a.PatientId
-                        INNER JOIN tblAppointmentStatus s ON s.Id = a.StatusId
-            WHERE a.Date = @date
-                AND s.Id = 2
+      SELECT 'Upcoming Appointments', COUNT(*), 'FaClock'
+      FROM tbl_appointments a
+        INNER JOIN tbl_clinics c ON c.id = a.clinic_id
+        LEFT JOIN tbl_users u ON u.id = a
+        .user_id
+        INNER JOIN tbl_patients p ON p.id = a.patient_id
+        INNER JOIN tbl_appointment_status s ON s.id = a.status_id
+      WHERE a.date = $1
+        AND s.id = 2
 
-            UNION ALL
+      UNION ALL
 
-            SELECT 'Patients Needing Confirmation', COUNT(1), 'FaExclamationTriangle'
-                FROM tblAppointments a
-                INNER JOIN tblClinics c ON c.Id = a.ClinicId
-                LEFT JOIN tblUsers u ON u.Id = a.UserId
-                INNER JOIN tblPatients p ON p.Id = a.PatientId
-                INNER JOIN tblAppointmentStatus s ON s.Id = a.StatusId
-            WHERE a.Date = @date
-                AND s.Id = 1
+      SELECT 'Patients Needing Confirmation', COUNT(*), 'FaExclamationTriangle'
+      FROM tbl_appointments a
+        INNER JOIN tbl_clinics c ON c.id = a.clinic_id
+        LEFT JOIN tbl_users u ON u.id = a.user_id
+        INNER JOIN tbl_patients p ON p.id = a.patient_id
+        INNER JOIN tbl_appointment_status s ON s.id = a.status_id
+      WHERE a.date = $1
+        AND s.id = 1
 
-            UNION ALL
+      UNION ALL
 
-            SELECT 'Sent Reminders', 0, 'FaPaperPlane'
-            `)
+      SELECT 'Sent Reminders', 0, 'FaPaperPlane'
+      `,
+      [params.Date]
+    );
 
-  res.json({data: appointmentStats.recordset})
-})
+    res.json({ data: result.rows });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error_message: error.message });
+  }
+});
 
 module.exports = router;
