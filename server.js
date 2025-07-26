@@ -8,7 +8,7 @@ require('dotenv').config(); // For loading .env variables
 
 const appointmentRoutes = require('./routes/appointments');
 const patientRoutes = require('./routes/patients');
-// const userRoutes = require('./routes/users');
+const userRoutes = require('./routes/users');
 const clinicRoutes = require('./routes/clinics');
 const loginRoutes = require('./routes/login');
 const dashboardRoutes = require('./routes/dashboard');
@@ -41,7 +41,7 @@ app.use(setToDefaultDB)
 // Routes
 app.use('/api/appointments', appointmentRoutes);
 app.use('/api/patients', patientRoutes);
-// app.use('/api/users', userRoutes);
+app.use('/api/users', userRoutes);
 app.use('/api/clinics', clinicRoutes);
 app.use('/api/', loginRoutes);
 app.use('/api/dashboard', dashboardRoutes);

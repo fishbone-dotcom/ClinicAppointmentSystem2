@@ -1,78 +1,79 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const {isBlank} = require('../helpers/common')
-const User = require('../models/users')
-const sql = require('mssql');
-const bcrypt = require('bcrypt');
+const { isBlank } = require("../helpers/common");
+const User = require("../models/users"); // ✅ Your pg User adapter
+const bcrypt = require("bcrypt");
 
-router.post('/data_by_id', async (req, res) => {
-  const conn = res.locals.conn
-  let {id} = req.body
+// ✅ Get user by ID
+router.post("/data_by_id", async (req, res) => {
+  const { id } = req.body;
+  const db = res.locals.conn;
 
-  let result = await conn.request()
-    .input('id', sql.Int, id)
-    .query(`SELECT Id, ClinicId, FirstName, LastName, Email, Password, RoleId
-            FROM tblUsers
-            WHERE Id = @id`)
+  const result = await db.query(
+    `SELECT id, clinic_id, first_name, last_name, email, password, role_id
+     FROM tbl_users
+     WHERE id = $1`,
+    [id]
+  );
 
-  res.json({data: result.recordset[0]})
-})
-
-router.post('/save', async (req, res) => {
-    const conn = res.locals.conn
-    let {masterFormData, id} = req.body
-    let errorMessage
-    const transaction = await conn.transaction()
-    await transaction.begin()
-    try {
-        let user = new User(transaction)
-
-        if (masterFormData.Password) {
-            const hashedPassword = await bcrypt.hash(masterFormData.Password, 10);
-            masterFormData.Password = hashedPassword;
-        }
-
-        if(isBlank(id)){
-            let result = await user.insert(masterFormData)
-            id = result.Id
-            await user.checkDuplicate(id, masterFormData)
-        }
-        else{
-            const params = [
-                { name: 'id', type: sql.Int, value: id }
-            ]
-
-            await user.update(params, masterFormData, 'Id = @id')
-        }
-
-        await transaction.commit()
-    } catch (error) {
-        errorMessage = error.message
-        await transaction.rollback()
-    }
-    finally{
-        res.json({error_message: errorMessage})
-    }
+  res.json({ data: result.rows[0] });
 });
 
-router.post('/delete', async (req, res) => {
-    const conn = res.locals.conn
-    let {id} = req.body
-    let errorMessage
-    const transaction = await conn.transaction()
-    await transaction.begin()
-    try {
-        let user = new User(transaction)
+// ✅ Save user (insert/update)
+router.post("/save", async (req, res) => {
+  const { masterFormData, id } = req.body;
+  const db = res.locals.conn;
+  let errorMessage;
 
-        await user.delete(id)
-        await transaction.commit()
-    } catch (error) {
-        errorMessage = error.message
-        await transaction.rollback()
+  try {
+    await db.query("BEGIN");
+
+    let user = new User(db);
+
+    if (masterFormData.Password) {
+      const hashedPassword = await bcrypt.hash(masterFormData.Password, 10);
+      masterFormData.Password = hashedPassword;
     }
-    finally{
-        res.json({error_message: errorMessage})
+
+    if (isBlank(id)) {
+      const result = await user.insert(masterFormData);
+      await user.checkDuplicate(result.id, masterFormData);
+    } else {
+      await user.update(id, masterFormData);
     }
+
+    await db.query("COMMIT");
+  } catch (error) {
+    console.error(error);
+    errorMessage = error.message;
+    await db.query("ROLLBACK");
+  } finally {
+    db.release();
+    res.json({ error_message: errorMessage });
+  }
+});
+
+// ✅ Delete user
+router.post("/delete", async (req, res) => {
+  const { id } = req.body;
+  const db = res.locals.conn;
+  let errorMessage;
+
+  try {
+    await db.query("BEGIN");
+
+    const user = new User(db);
+    await user.delete(id);
+
+    await db.query("COMMIT");
+  } catch (error) {
+    console.error(error);
+    errorMessage = error.message;
+    await db.query("ROLLBACK");
+  } finally {
+    db.release();
+    res.json({ error_message: errorMessage });
+  }
 });
 
 module.exports = router;
