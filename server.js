@@ -21,7 +21,7 @@ const PORT = process.env.PORT || 3000;
 app.use(cookieParser());
 app.use(express.json());
 app.use(cors({
-  origin: 'https://clinic-appointment-system-frontend.vercel.app/', // frontend origin (Next.js dev server)
+  origin: 'https://clinic-appointment-system-frontend.vercel.app', // frontend origin (Next.js dev server)
   credentials: true                // ✅ important so browser sends cookies
 }));
 
