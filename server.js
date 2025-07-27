@@ -22,7 +22,8 @@ app.use(cookieParser());
 app.use(express.json());
 app.use(cors({
   origin: 'https://clinic-appointment-system-frontend.vercel.app', // frontend origin (Next.js dev server)
-  credentials: true                // ✅ important so browser sends cookies
+  credentials: true,            // ✅ important so browser sends cookies
+  exposedHeaders: ['Set-Cookie'], 
 }));
 
 app.use(express.urlencoded({ extended: true })); // for form-urlencoded body
