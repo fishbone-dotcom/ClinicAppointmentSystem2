@@ -43,13 +43,6 @@ router.post('/login', async (req, res) => {
       { expiresIn: '1d' }
     );
 
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'none',
-      maxAge: 24 * 60 * 60 * 1000,
-    });
-
     res.json({
       message: 'Login successful',
       user: {
@@ -59,6 +52,7 @@ router.post('/login', async (req, res) => {
         role: user.role_id,
         clinicId: user.clinic_id,
       },
+      token
     });
   } catch (err) {
     console.error('Login error:', err);
