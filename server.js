@@ -4,7 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const db = require('./helpers/database')
 const cookieParser = require('cookie-parser');
-require('dotenv').config(); // For loading .env variables
+require('dotenv').config({ path: process.env.NODE_ENV === 'production' ? '.env.production' : '.env.local' });
 
 const appointmentRoutes = require('./routes/appointments');
 const patientRoutes = require('./routes/patients');
@@ -17,13 +17,11 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
-
 app.use(cookieParser());
 app.use(express.json());
 app.use(cors({
-  origin: 'https://clinic-appointment-system-frontend.vercel.app', // frontend origin (Next.js dev server)
-  credentials: true,            // ✅ important so browser sends cookies
-  exposedHeaders: ['Set-Cookie'], 
+  origin: process.env.FRONTEND_URL,
+  credentials: true
 }));
 
 app.use(express.urlencoded({ extended: true })); // for form-urlencoded body
