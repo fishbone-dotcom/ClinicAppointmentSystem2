@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const { isBlank } = require("../helpers/common");
-const User = require("../models/users"); // ✅ Your pg User adapter
+const User = require("../models/users");
 const bcrypt = require("bcrypt");
 
 // ✅ Get user by ID
@@ -9,14 +9,21 @@ router.post("/data_by_id", async (req, res) => {
   const { id } = req.body;
   const db = res.locals.conn;
 
-  const result = await db.query(
-    `SELECT id, clinic_id, first_name, last_name, email, password, role_id
-     FROM tbl_users
-     WHERE id = $1`,
-    [id]
-  );
+  try {
+    const result = await db.query(
+      `SELECT id, clinic_id, first_name, last_name, email, password, role_id
+       FROM tbl_users
+       WHERE id = $1`,
+      [id]
+    );
 
-  res.json({ data: result.rows[0] });
+    res.json({ data: result.rows[0] });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error_message: error.message });
+  } finally {
+    if (db.release) db.release();
+  }
 });
 
 // ✅ Save user (insert/update)
@@ -48,7 +55,7 @@ router.post("/save", async (req, res) => {
     errorMessage = error.message;
     await db.query("ROLLBACK");
   } finally {
-    db.release();
+    if (db.release) db.release();
     res.json({ error_message: errorMessage });
   }
 });
@@ -71,7 +78,7 @@ router.post("/delete", async (req, res) => {
     errorMessage = error.message;
     await db.query("ROLLBACK");
   } finally {
-    db.release();
+    if (db.release) db.release();
     res.json({ error_message: errorMessage });
   }
 });

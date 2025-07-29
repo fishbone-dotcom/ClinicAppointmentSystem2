@@ -20,6 +20,8 @@ router.post("/data_by_id", async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error_message: error.message });
+  } finally {
+    if (db.release) db.release();
   }
 });
 
@@ -30,21 +32,24 @@ router.post("/details", async (req, res) => {
   try {
     const result = await db.query(
       `SELECT id, formal_name, email, phone
-            FROM tbl_patients
-            ORDER BY formal_name`
+       FROM tbl_patients
+       ORDER BY formal_name`
     );
 
     res.json({ data: result.rows });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error_message: error.message });
+  } finally {
+    if (db.release) db.release();
   }
 });
 
 // ✅ Get patient lookups
 router.get("/get_patient_look_ups", async (req, res) => {
+  const db = res.locals.conn;
+
   try {
-    const db = res.locals.conn;
     const result = await db.query(
       `SELECT id, formal_name AS value
        FROM tbl_patients
@@ -55,13 +60,15 @@ router.get("/get_patient_look_ups", async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error_message: error.message });
+  } finally {
+    if (db.release) db.release();
   }
 });
 
 // ✅ Insert or update patient
 router.post("/save", async (req, res) => {
   const db = res.locals.conn;
-  let id  = req.body.id
+  let id = req.body.id;
   const { firstName, lastName, email, phone } = req.body.masterFormData;
   console.log('req.body.masterFormData: ', req.body.masterFormData);
   let errorMessage;
@@ -90,7 +97,7 @@ router.post("/save", async (req, res) => {
     await db.query("ROLLBACK");
     console.error(error);
   } finally {
-    db.release();
+    if (db.release) db.release();
     res.json({ error_message: errorMessage });
   }
 });
@@ -113,7 +120,7 @@ router.post("/delete", async (req, res) => {
     await db.query("ROLLBACK");
     console.error(error);
   } finally {
-    db.release();
+    if (db.release) db.release();
     res.json({ error_message: errorMessage });
   }
 });

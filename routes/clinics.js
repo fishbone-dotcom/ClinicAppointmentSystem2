@@ -1,13 +1,14 @@
 const express = require('express');
 const router = express.Router();
-const {isBlank} = require('../helpers/common')
-const Clinic = require('../models/clinics')
+const { isBlank } = require('../helpers/common');
+const Clinic = require('../models/clinics');
 
+// ✅ DATA BY ID
 router.post('/data_by_id', async (req, res) => {
   const { id } = req.body;
+  const db = res.locals.conn;
 
   try {
-    const db = res.locals.conn
     const result = await db.query(
       `
       SELECT id, name, email, address, phone
@@ -21,13 +22,16 @@ router.post('/data_by_id', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error_message: error.message });
+  } finally {
+    if (db.release) db.release();
   }
 });
 
+// ✅ SAVE
 router.post('/save', async (req, res) => {
   const { masterFormData, id } = req.body;
   let errorMessage;
-  const db = res.locals.conn
+  const db = res.locals.conn;
 
   try {
     await db.query('BEGIN');
@@ -48,21 +52,21 @@ router.post('/save', async (req, res) => {
     errorMessage = error.message;
     await db.query('ROLLBACK');
   } finally {
-    db.release();
+    if (db.release) db.release();
     res.json({ error_message: errorMessage });
   }
 });
 
+// ✅ DELETE
 router.post('/delete', async (req, res) => {
   const { id } = req.body;
   let errorMessage;
-  const db = res.locals.conn
+  const db = res.locals.conn;
 
   try {
     await db.query('BEGIN');
 
     let clinic = new Clinic(db);
-
     await clinic.delete(id);
 
     await db.query('COMMIT');
@@ -71,21 +75,28 @@ router.post('/delete', async (req, res) => {
     errorMessage = error.message;
     await db.query('ROLLBACK');
   } finally {
-    db.release();
+    if (db.release) db.release();
     res.json({ error_message: errorMessage });
   }
 });
 
+// ✅ LOOK UPS
 router.get('/get_clinic_look_ups', async (req, res) => {
+  const db = res.locals.conn;
+
   try {
-    const db = res.locals.conn
     const result = await db.query(
-      `SELECT id, name AS value FROM tbl_clinics ORDER BY name`
+      `
+      SELECT id, name AS value FROM tbl_clinics ORDER BY name
+      `
     );
+
     res.json({ data: result.rows });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error_message: error.message });
+  } finally {
+    if (db.release) db.release();
   }
 });
 
