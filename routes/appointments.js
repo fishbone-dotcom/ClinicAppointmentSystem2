@@ -1,11 +1,12 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const { isBlank } = require('../helpers/common');
-const Appointment = require('../models/appointments');
-const Email = require('../models/emails');
+const { isBlank } = require("../helpers/common");
+const Appointment = require("../models/appointments");
+const Patient = require("../models/patients")
+const Email = require("../models/emails");
 
 // ✅ DATA BY ID
-router.post('/data_by_id', async (req, res) => {
+router.post("/data_by_id", async (req, res) => {
   const { id } = req.body;
   const db = res.locals.conn;
 
@@ -29,7 +30,7 @@ router.post('/data_by_id', async (req, res) => {
 });
 
 // ✅ DETAILS
-router.post('/details', async (req, res) => {
+router.post("/details", async (req, res) => {
   const db = res.locals.conn;
   let { params } = req.body;
   let { ClinicId, PatientId, StatusId } = params;
@@ -64,40 +65,50 @@ router.post('/details', async (req, res) => {
 });
 
 // ✅ SAVE
-router.post('/save', async (req, res) => {
+router.post("/save", async (req, res) => {
   const db = res.locals.conn;
   let id = req.body.id;
-  let { patientId, clinicId, statusId, userId, date, time, reason } = req.body.masterFormData;
-
-  console.log('req.body: ', req.body);
+  let params = req.body;
   let errorMessage;
 
-  await db.query('BEGIN');
+  if (appointmentSource === "landing_page") {
+    let firstName = params.firstName
+    let lastName = params.lastName
+    let email = params.email
+    let contactNumber = params.contactNumber
+    let reason = params.reason
+    let date = params.date
+    let time = params.time
 
-  try {
-    let appointment = new Appointment(db);
-    let email = new Email(db);
+    await db.query("BEGIN");
 
-    let data = {
-      user_id: userId,
-      patient_id: patientId,
-      clinic_id: clinicId,
-      status_id: statusId,
-      date: date,
-      time: time,
-      notes: reason
-    };
+    try {
+      let patientData = {
+        firstName,
+        lastName,
+        email,
+        contactNumber
+      }
 
-    if (isBlank(id)) {
-      const result = await appointment.insert(data);
-      id = result.id;
-      await appointment.checkDuplicate(id, data);
-    } else {
-      await appointment.update(id, data);
-    }
+      let patient = new Patient(db);
+      let result = await patient.insert(data);
+      let patient_id = result.id;
 
-    const appointmentResult = await db.query(
-      `
+      let appointment = new Appointment(db);
+      let data = {
+        patient_id,
+        date,
+        time,
+        notes: reason,
+      };
+
+      result = await appointment.insert(data);
+      let appointment_id = result.id;
+      await appointment.checkDuplicate(appointment_id, data);
+
+      let email = new Email(db);
+       const appointmentResult = await db.query(
+        `
       SELECT s.is_send_email, s.name AS status, u.email AS sender_email, 
              p.email AS recipient_email, a.date, a.time
       FROM tbl_appointments a
@@ -106,52 +117,134 @@ router.post('/save', async (req, res) => {
         INNER JOIN tbl_appointment_status s ON s.id = a.status_id
       WHERE a.id = $1
       `,
-      [id]
-    );
+        [id]
+      );
 
-    if (appointmentResult.rows.length > 0) {
-      let { is_send_email, status, sender_email, recipient_email, date, time } = appointmentResult.rows[0];
+      if (appointmentResult.rows.length > 0) {
+        let {
+          is_send_email,
+          status,
+          sender_email,
+          recipient_email,
+          date,
+          time,
+        } = appointmentResult.rows[0];
 
-      if (is_send_email) {
-        let emailData = {
-          appointment_id: id,
-          sender_email: recipient_email,
-          recipient_email: sender_email,
-          subject: `Your Appointment is ${status}`,
-          body: `Dear Patient, your appointment with HealthFirst Medical Center has been ${status} for ${date} at ${time}.`
-        };
+        if (is_send_email) {
+          let emailData = {
+            appointment_id: id,
+            sender_email: recipient_email,
+            recipient_email: sender_email,
+            subject: `Your Appointment is ${status}`,
+            body: `Dear Patient, your appointment with HealthFirst Medical Center has been ${status} for ${date} at ${time}.`,
+          };
 
-        await email.insert(emailData);
+          await email.insert(emailData);
+        }
       }
+
+      await db.query("COMMIT");
+
+    } catch (error) {
+      console.log(error);
+      errorMessage = error.message;
+      await db.query("ROLLBACK");
+    }
+    finally {
+      if (db.release) db.release();
+      res.json({ error_message: errorMessage });
     }
 
-    await db.query('COMMIT');
-  } catch (error) {
-    errorMessage = error.message;
-    await db.query('ROLLBACK');
-  } finally {
-    if (db.release) db.release();
-    res.json({ error_message: errorMessage });
+  } else {
+    await db.query("BEGIN");
+
+    try {
+      let appointment = new Appointment(db);
+      let email = new Email(db);
+
+      let data = {
+        user_id: 1,
+        patient_id: params.patientId,
+        clinic_id: params.clinicId,
+        status_id: params.statusId,
+        date: params.date,
+        time: params.time,
+        notes: params.reason,
+      };
+
+      if (isBlank(id)) {
+        const result = await appointment.insert(data);
+        id = result.id;
+        await appointment.checkDuplicate(id, data);
+      } else {
+        await appointment.update(id, data);
+      }
+
+      const appointmentResult = await db.query(
+        `
+      SELECT s.is_send_email, s.name AS status, u.email AS sender_email, 
+             p.email AS recipient_email, a.date, a.time
+      FROM tbl_appointments a
+        INNER JOIN tbl_users u ON u.id = a.user_id
+        INNER JOIN tbl_patients p ON p.id = a.patient_id
+        INNER JOIN tbl_appointment_status s ON s.id = a.status_id
+      WHERE a.id = $1
+      `,
+        [id]
+      );
+
+      if (appointmentResult.rows.length > 0) {
+        let {
+          is_send_email,
+          status,
+          sender_email,
+          recipient_email,
+          date,
+          time,
+        } = appointmentResult.rows[0];
+
+        if (is_send_email) {
+          let emailData = {
+            appointment_id: id,
+            sender_email: recipient_email,
+            recipient_email: sender_email,
+            subject: `Your Appointment is ${status}`,
+            body: `Dear Patient, your appointment with HealthFirst Medical Center has been ${status} for ${date} at ${time}.`,
+          };
+
+          await email.insert(emailData);
+        }
+      }
+
+      await db.query("COMMIT");
+    } catch (error) {
+      console.log(error);
+      errorMessage = error.message;
+      await db.query("ROLLBACK");
+    } finally {
+      if (db.release) db.release();
+      res.json({ error_message: errorMessage });
+    }
   }
 });
 
 // ✅ DELETE
-router.post('/delete', async (req, res) => {
+router.post("/delete", async (req, res) => {
   const { id } = req.body;
   let errorMessage;
   const db = res.locals.conn;
 
   try {
-    await db.query('BEGIN');
+    await db.query("BEGIN");
 
     let appointment = new Appointment(db);
     await appointment.delete(id);
 
-    await db.query('COMMIT');
+    await db.query("COMMIT");
   } catch (error) {
     console.error(error);
     errorMessage = error.message;
-    await db.query('ROLLBACK');
+    await db.query("ROLLBACK");
   } finally {
     if (db.release) db.release();
     res.json({ error_message: errorMessage });
@@ -159,7 +252,7 @@ router.post('/delete', async (req, res) => {
 });
 
 // ✅ LOOK UPS
-router.get('/get_appointment_look_ups', async (req, res) => {
+router.get("/get_appointment_look_ups", async (req, res) => {
   const db = res.locals.conn;
 
   try {
